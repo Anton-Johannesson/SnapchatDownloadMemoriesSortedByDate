@@ -1,3 +1,12 @@
+"""Snapchat Memories Download & Organization Tool - Parallel Version
+
+Author: Anton Johannesson
+Description: Downloads Snapchat Memories from JSON export and organizes them by date
+             into a folder structure (Year/Month). Multi-threaded parallel download version.
+Version: 1.0
+License: MIT
+"""
+
 import json
 import os
 import urllib.request
