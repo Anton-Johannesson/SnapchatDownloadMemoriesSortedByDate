@@ -8,8 +8,6 @@ Download your Snapchat memories and have them automatically sorted into Year/Mon
 
 Snapchat introduced a **5GB limit on Memories**. To keep a complete backup, you need to download your data manually. This Python script downloads all your Snapchat memories from a JSON export and organizes them by date.
 
-As seen on: https://www.tiktok.com/@giraintech/video/7583879890265558280
-
 ---
 
 ## Features
