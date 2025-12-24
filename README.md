@@ -15,6 +15,7 @@ As seen on: https://www.tiktok.com/@giraintech/video/7583879890265558280
 ## Features
 
 - **Auto-sorted by date:** Creates `Year/Month/` folders (2016–2025, January–December)
+- **Auto-sorted by date:** Creates `Year/Month/` folders (2016–2025, January–December), dates can be changed, see code
 - **Unsorted fallback:** Items without dates go to an `Unsorted/` folder
 - **Idempotent:** Re-run safely — already downloaded files are skipped
 - **Resilient:** Failed downloads are logged but don't stop the script
@@ -103,3 +104,9 @@ Snapchat Memories/
 - Python 3.x
 - Internet connection
 - Snapchat JSON export (`memories_history.json`)
+
+---
+
+## Acknowledgments
+
+Inspired by [girachawda](https://github.com/girachawda)'s work on Snapchat memory management.
