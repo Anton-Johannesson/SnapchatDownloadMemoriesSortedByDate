@@ -78,6 +78,26 @@ python import_json_parallel.py
 - Shows real-time progress with ETA: `[150/3687] 4.1% | ETA: 11m 22s`
 - Saves failed downloads to `failed_downloads.txt` for retry
 
+### Option 3: Optimize for Your Internet Speed
+
+Run the speed test to find the optimal number of parallel workers:
+
+```bash
+python speed_test.py
+```
+
+This will:
+- Test your download speed and latency
+- Recommend the best `MAX_WORKERS` value for your connection
+- Optionally update `import_json_parallel.py` automatically
+
+| Your Speed | Recommended Workers |
+|------------|---------------------|
+| <10 Mbps   | 4                   |
+| 10–50 Mbps | 8–12                |
+| 50–100 Mbps| 16                  |
+| 100+ Mbps  | 24–32               |
+
 > **Tip:** Use `r"..."` (raw strings) on Windows to avoid backslash issues.  
 > **macOS/Linux:** Use forward slashes, e.g., `/Volumes/Drive/Snapchat Memories`
 

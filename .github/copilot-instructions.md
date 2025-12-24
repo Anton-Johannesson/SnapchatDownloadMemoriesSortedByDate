@@ -3,47 +3,57 @@
 These instructions help AI agents work productively in this repository.
 
 ## Big Picture
-- Single-purpose Python script that downloads Snapchat Memories from a JSON export and saves them to disk.
-- No frameworks, tests, or external packages; standard library only. Keep solutions simple, surgical, and Windows-friendly.
+- Downloads Snapchat Memories from a JSON export and organizes them into `Year/Month/` folders.
+- Two scripts: sequential (`import_json.py`) and parallel (`import_json_parallel.py`).
+- **Standard library only**—no external packages. Keep solutions simple and Windows-friendly.
 
 ## Code Map
-- import_json.py — Entry script. Configure `JSON_FILE` (input export) and `OUTPUT_DIR` (download target). Uses `json`, `os`, and `urllib.request` only.
-- README.md — Short, high-level description.
+| File | Purpose |
+|------|---------|
+| `import_json.py` | Sequential downloader (simple, single-threaded) |
+| `import_json_parallel.py` | Parallel downloader (`ThreadPoolExecutor`, 8 workers, progress/ETA display) |
+| `README.md` | User-facing documentation with setup instructions |
 
 ## Data & Behavior
-- Input JSON must contain top-level key: `Saved Media` (array of items).
-- Each item: `Media Type` (e.g., "Video"), `Media Download Url` (HTTP link), and a date field.
-- Date detection: tries `Date`, `Created`, `Timestamp`, `Creation Timestamp` in multiple formats.
-- File extension: `.mp4` when `media_type.lower() == "video"`, otherwise `.jpg`.
-- Filenames: zero-padded sequence `00001.ext`, `00002.ext`, … determined by array order.
-- **Folder structure:** Creates `OUTPUT_DIR/Year/Month/` (2016–2025, January–December) plus `Unsorted/` for items missing dates.
-- Idempotency: scans entire folder tree for existing filenames to avoid re-downloads.
-- Creates folders if missing; prints progress; download errors are caught and logged per item.
+- **Input:** JSON with `"Saved Media"` array. Each item has `Media Type`, `Media Download Url`, and a date field.
+- **Date fields tried:** `Date`, `Created`, `Timestamp`, `Creation Timestamp` (case variations).
+- **Date formats:** `%Y-%m-%d %H:%M:%S %Z`, `%Y-%m-%d %H:%M:%S`, `%Y-%m-%dT%H:%M:%SZ`, `%Y-%m-%d`.
+- **Extension:** `.mp4` for `video`, `.jpg` otherwise.
+- **Filename:** 5-digit zero-padded index from array order (`00001.jpg`, `00002.mp4`, …).
+- **Folder structure:** `OUTPUT_DIR/Year/Month/` (2016–2025) + `Unsorted/` for items missing dates.
+- **Idempotency:** Scans entire tree for existing filenames before downloading.
 
-## How To Run (Windows)
-- Edit constants at top of `import_json.py`:
-  - `JSON_FILE = "C:\\path\\to\\memories_history.json"`
-  - `OUTPUT_DIR = "C:\\path\\to\\Downloads\\Snapchat"`
-- Run from repo root:
-  - PowerShell: `python .\import_json.py`
-- Python 3 is required; there are no extra dependencies.
+## How To Run
+1. Set constants at top of script:
+   ```python
+   JSON_FILE = r"C:\path\to\memories_history.json"
+   OUTPUT_DIR = r"C:\path\to\Snapchat Memories"
+   ```
+2. Run: `python import_json.py` or `python import_json_parallel.py`
 
 ## Project Conventions
-- Keep standard-library only unless asked otherwise; prefer `urllib.request` for downloads.
-- Preserve the current filename scheme (5-digit zero-padding) and extension mapping.
-- Maintain skip-on-exist behavior for idempotent reruns.
-- Use `os.path` joins and handle Windows paths carefully.
+- **Standard library only:** `json`, `os`, `urllib.request`, `datetime`, `threading`, `concurrent.futures`.
+- Use `os.path.join()` for paths; handle Windows backslashes with raw strings.
+- Preserve 5-digit filename scheme and `.mp4`/`.jpg` extension mapping.
+- Maintain skip-on-exist idempotency for safe reruns.
+- Prefer defensive access (`.get(...)`) for JSON fields.
+
+## Parallel Script Specifics
+- `MAX_WORKERS = 8` controls thread count.
+- Thread-safe counters via `threading.Lock()`.
+- Failed downloads logged to `failed_downloads.txt` in output dir.
+- Progress shows `[processed/total] percent | ETA: Xm Ys`.
 
 ## Safe Changes For Agents
-- When adding functionality (e.g., CLI flags via `argparse`), keep current constants as defaults for backward compatibility.
-- If introducing date-based organization (when specifically requested), gate behind an option and keep skip/idempotency logic intact.
-- Avoid breaking changes to the default behavior without an opt-in switch.
+- Keep current constants as defaults when adding CLI flags (`argparse`).
+- Gate new features behind opt-in switches; don't break default behavior.
+- Keep both scripts in sync when modifying shared logic (date parsing, folder structure).
 
 ## Gotchas
-- Snapchat download URLs may expire; failures will print but be resilient per-item.
-- If the JSON schema differs, prefer defensive access (e.g., `.get(...)`) and keep non-fatal on missing fields.
+- Snapchat URLs expire; failures are logged per-item but don't halt the script.
+- Year range (2016–2025) is hardcoded in `ensure_folder_structure()`—extend if needed.
+- JSON schema may vary; handle missing fields gracefully.
 
 ## Scope & Style
-- Make minimal, focused patches.
-- Don’t introduce heavy structure (no frameworks, no test harness) unless requested.
-- Follow the existing straightforward, procedural style.
+- Minimal, focused patches. Procedural style, no classes or frameworks.
+- Don't introduce test harnesses or complex structure unless explicitly requested.

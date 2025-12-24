@@ -12,10 +12,8 @@ import os
 import urllib.request
 from datetime import datetime
 
-JSON_FILE = r"C:\Users\Anton Johannesson\Downloads\mydata~1765832813579\json\memories_history.json"
-OUTPUT_DIR = r"C:\Users\Anton Johannesson\Downloads\Snapchat Memories"  # Base folder for organized memories
-JSON_FILE = "" # Change to desired paths, where the JSON file is located
-OUTPUT_DIR = ""  # Base folder for organized memories, where you want files to be stored
+JSON_FILE = r"" #Change to where JSON file is located
+OUTPUT_DIR = r"" #Change to desired output directory
 
 # Month names for folder creation
 MONTHS = [
@@ -44,8 +42,7 @@ def parse_date(item):
 
 def ensure_folder_structure(base_dir):
     """Create Snapchat Memories/Year/Month folder structure."""
-    for year in range(2016, 2026):
-    for year in range(2016, 2026): # change here for desired years
+    for year in range(2016, 2026):  # change here for desired years
         for month in MONTHS:
             path = os.path.join(base_dir, str(year), month)
             os.makedirs(path, exist_ok=True)

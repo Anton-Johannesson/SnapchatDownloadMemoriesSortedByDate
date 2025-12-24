@@ -3,6 +3,18 @@
 Author: Anton Johannesson
 Description: Downloads Snapchat Memories from JSON export and organizes them by date
              into a folder structure (Year/Month). Multi-threaded parallel download version.
+
+Notes: Use the internet connection tool first, if you have good enough internet you can change the amount of workers
+        the tool will also let you know the amount of workers you should use
+
+Worker recommendations:
+    Your Speed	    Workers
+    <10 Mbps	    4
+    10–25 Mbps	    8
+    25–50 Mbps	    12
+    50–100 Mbps	    16
+    100–200 Mbps	24
+    200+ Mbps	    32 (max)
 Version: 1.0
 License: MIT
 """
@@ -15,10 +27,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
 import time
 
-JSON_FILE = r"C:\Users\Anton Johannesson\Downloads\mydata~1765832813579\json\memories_history.json"
-OUTPUT_DIR = r"C:\Users\Anton Johannesson\Downloads\Snapchat Memories Parallel Download"
-JSON_FILE = "" # Change to desired paths, where the JSON file is located
-OUTPUT_DIR = "" # Base folder for organized memories, where you want files to be stored
+JSON_FILE = r"" #Change to where JSON file is located
+OUTPUT_DIR = r"" #Change to desired output directory
 FAILED_LOG = os.path.join(OUTPUT_DIR, "failed_downloads.txt")
 
 # Number of parallel downloads (5-10 is usually safe)
@@ -56,7 +66,6 @@ def parse_date(item):
 
 def ensure_folder_structure(base_dir):
     """Create Snapchat Memories/Year/Month folder structure."""
-    for year in range(2016, 2026):
     for year in range(2016, 2026): # change to desired years
         for month in MONTHS:
             path = os.path.join(base_dir, str(year), month)
