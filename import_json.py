@@ -3,17 +3,23 @@
 Author: Anton Johannesson
 Description: Downloads Snapchat Memories from JSON export and organizes them by date
              into a folder structure (Year/Month). Single-threaded version.
-Version: 1.0
+Version: 1.1
 License: MIT
 """
 
 import json
 import os
+import shutil
+import time
+import urllib.error
 import urllib.request
 from datetime import datetime
 
 JSON_FILE = r"" #Change to where JSON file is located
 OUTPUT_DIR = r"" #Change to desired output directory
+
+TIMEOUT = 30   # seconds per request
+RETRIES = 3    # attempts per file
 
 # Month names for folder creation
 MONTHS = [
@@ -40,16 +46,6 @@ def parse_date(item):
     return None
 
 
-def ensure_folder_structure(base_dir):
-    """Create Snapchat Memories/Year/Month folder structure."""
-    for year in range(2016, 2026):  # change here for desired years
-        for month in MONTHS:
-            path = os.path.join(base_dir, str(year), month)
-            os.makedirs(path, exist_ok=True)
-    # Also create an "Unsorted" folder for items without dates
-    os.makedirs(os.path.join(base_dir, "Unsorted"), exist_ok=True)
-
-
 def get_target_folder(base_dir, dt):
     """Return the folder path for a given datetime, or Unsorted if None."""
     if dt is None:
@@ -68,12 +64,40 @@ def build_existing_files_index(base_dir):
     return existing
 
 
+def fetch_to_file(url, filepath, retries=RETRIES, timeout=TIMEOUT):
+    """Download url to filepath atomically (via .part) with timeout and retry."""
+    if not url.lower().startswith("https://"):
+        raise ValueError("Only https:// URLs are allowed")
+    tmp = filepath + ".part"
+    last_error = None
+    for attempt in range(1, retries + 1):
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=timeout) as resp, open(tmp, "wb") as out:
+                shutil.copyfileobj(resp, out)
+            os.replace(tmp, filepath)
+            return
+        except Exception as e:
+            last_error = e
+            if os.path.exists(tmp):
+                os.remove(tmp)
+            # Client errors (expired link etc.) will not fix themselves, except 429
+            if isinstance(e, urllib.error.HTTPError) and 400 <= e.code < 500 and e.code != 429:
+                break
+            if attempt < retries:
+                time.sleep(2 ** attempt)
+    raise last_error
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Main script
 # ─────────────────────────────────────────────────────────────────────────────
 
-print("Setting up folder structure...")
-ensure_folder_structure(OUTPUT_DIR)
+if not JSON_FILE or not OUTPUT_DIR:
+    raise SystemExit("Set JSON_FILE and OUTPUT_DIR at the top of the script first.")
+
+print("Setting up output folder...")
+os.makedirs(os.path.join(OUTPUT_DIR, "Unsorted"), exist_ok=True)
 
 with open(JSON_FILE, "r", encoding="utf-8") as f:
     data = json.load(f)
@@ -100,13 +124,14 @@ for i, item in enumerate(media_items, start=1):
 
     dt = parse_date(item)
     folder = get_target_folder(OUTPUT_DIR, dt)
+    os.makedirs(folder, exist_ok=True)
     filepath = os.path.join(folder, filename)
 
     date_label = dt.strftime("%Y-%m") if dt else "Unsorted"
     print(f"Downloading {filename} → {date_label}")
 
     try:
-        urllib.request.urlretrieve(url, filepath)
+        fetch_to_file(url, filepath)
         downloaded += 1
     except Exception as e:
         print(f"❌ Failed {filename}: {e}")
