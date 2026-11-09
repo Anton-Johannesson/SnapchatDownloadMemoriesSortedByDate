@@ -89,52 +89,53 @@ def fetch_to_file(url, filepath, retries=RETRIES, timeout=TIMEOUT):
     raise last_error
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Main script
-# ─────────────────────────────────────────────────────────────────────────────
+def main():
+    if not JSON_FILE or not OUTPUT_DIR:
+        raise SystemExit("Set JSON_FILE and OUTPUT_DIR at the top of the script first.")
 
-if not JSON_FILE or not OUTPUT_DIR:
-    raise SystemExit("Set JSON_FILE and OUTPUT_DIR at the top of the script first.")
+    print("Setting up output folder...")
+    os.makedirs(os.path.join(OUTPUT_DIR, "Unsorted"), exist_ok=True)
 
-print("Setting up output folder...")
-os.makedirs(os.path.join(OUTPUT_DIR, "Unsorted"), exist_ok=True)
+    with open(JSON_FILE, "r", encoding="utf-8") as f:
+        data = json.load(f)
 
-with open(JSON_FILE, "r", encoding="utf-8") as f:
-    data = json.load(f)
+    media_items = data.get("Saved Media", [])
+    existing_files = build_existing_files_index(OUTPUT_DIR)
 
-media_items = data.get("Saved Media", [])
-existing_files = build_existing_files_index(OUTPUT_DIR)
+    downloaded = 0
+    skipped = 0
+    failed = 0
 
-downloaded = 0
-skipped = 0
-failed = 0
+    for i, item in enumerate(media_items, start=1):
+        media_type = item.get("Media Type", "").lower()
+        ext = ".mp4" if media_type == "video" else ".jpg"
+        filename = f"{i:05d}{ext}"
 
-for i, item in enumerate(media_items, start=1):
-    media_type = item.get("Media Type", "").lower()
-    ext = ".mp4" if media_type == "video" else ".jpg"
-    filename = f"{i:05d}{ext}"
+        if filename in existing_files:
+            skipped += 1
+            continue
 
-    if filename in existing_files:
-        skipped += 1
-        continue
+        url = item.get("Media Download Url")
+        if not url:
+            continue
 
-    url = item.get("Media Download Url")
-    if not url:
-        continue
+        dt = parse_date(item)
+        folder = get_target_folder(OUTPUT_DIR, dt)
+        os.makedirs(folder, exist_ok=True)
+        filepath = os.path.join(folder, filename)
 
-    dt = parse_date(item)
-    folder = get_target_folder(OUTPUT_DIR, dt)
-    os.makedirs(folder, exist_ok=True)
-    filepath = os.path.join(folder, filename)
+        date_label = dt.strftime("%Y-%m") if dt else "Unsorted"
+        print(f"Downloading {filename} -> {date_label}")
 
-    date_label = dt.strftime("%Y-%m") if dt else "Unsorted"
-    print(f"Downloading {filename} → {date_label}")
+        try:
+            fetch_to_file(url, filepath)
+            downloaded += 1
+        except Exception as e:
+            print(f"Failed {filename}: {e}")
+            failed += 1
 
-    try:
-        fetch_to_file(url, filepath)
-        downloaded += 1
-    except Exception as e:
-        print(f"❌ Failed {filename}: {e}")
-        failed += 1
+    print(f"\nDone! Downloaded: {downloaded}, Skipped: {skipped}, Failed: {failed}")
 
-print(f"\n✅ Done! Downloaded: {downloaded}, Skipped: {skipped}, Failed: {failed}")
+
+if __name__ == "__main__":
+    main()

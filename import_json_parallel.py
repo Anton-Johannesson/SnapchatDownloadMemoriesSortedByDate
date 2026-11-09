@@ -8,13 +8,13 @@ Notes: Use the internet connection tool first, if you have good enough internet 
         the tool will also let you know the amount of workers you should use
 
 Worker recommendations:
-    Your Speed	    Workers
-    <10 Mbps	    4
-    10–25 Mbps	    8
-    25–50 Mbps	    12
-    50–100 Mbps	    16
-    100–200 Mbps	24
-    200+ Mbps	    32 (max)
+    Your Speed      Workers
+    <10 Mbps        4
+    10-25 Mbps      8
+    25-50 Mbps      12
+    50-100 Mbps     16
+    100-200 Mbps    24
+    200+ Mbps       32 (max)
 Version: 1.1
 License: MIT
 """
@@ -31,7 +31,6 @@ import time
 
 JSON_FILE = r"" #Change to where JSON file is located
 OUTPUT_DIR = r"" #Change to desired output directory
-FAILED_LOG = os.path.join(OUTPUT_DIR, "failed_downloads.txt")
 
 # Number of parallel downloads (5-10 is usually safe)
 MAX_WORKERS = 8
@@ -166,16 +165,16 @@ def format_time(seconds):
 def get_progress_string(total_items):
     """Generate progress string with ETA."""
     processed = stats["processed"]
-    
+
     if start_time is None or processed == 0:
         return f"[0/{total_items}] Starting..."
-    
+
     elapsed = time.time() - start_time
-    
+
     rate = processed / elapsed  # items per second
     remaining = total_items - processed
     eta_seconds = remaining / rate if rate > 0 else 0
-    
+
     percent = (processed / total_items) * 100
     return f"[{processed}/{total_items}] {percent:.1f}% | ETA: {format_time(eta_seconds)}"
 
@@ -184,8 +183,9 @@ def save_failed_log():
     """Save failed downloads to a file for retry."""
     if not failed_items:
         return
-    
-    with open(FAILED_LOG, "w", encoding="utf-8") as f:
+
+    failed_log = os.path.join(OUTPUT_DIR, "failed_downloads.txt")
+    with open(failed_log, "w", encoding="utf-8") as f:
         f.write(f"# Failed downloads - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
         f.write(f"# Total failed: {len(failed_items)}\n\n")
         for item in failed_items:
@@ -193,55 +193,58 @@ def save_failed_log():
             f.write(f"URL: {item['url']}\n")
             f.write(f"Error: {item.get('error', 'Unknown')}\n")
             f.write("-" * 50 + "\n")
-    print(f"\n📝 Failed downloads saved to: {FAILED_LOG}")
+    print(f"\nFailed downloads saved to: {failed_log}")
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Main script
-# ─────────────────────────────────────────────────────────────────────────────
+def main():
+    global start_time
 
-if not JSON_FILE or not OUTPUT_DIR:
-    raise SystemExit("Set JSON_FILE and OUTPUT_DIR at the top of the script first.")
+    if not JSON_FILE or not OUTPUT_DIR:
+        raise SystemExit("Set JSON_FILE and OUTPUT_DIR at the top of the script first.")
 
-print("Setting up output folder...")
-os.makedirs(os.path.join(OUTPUT_DIR, "Unsorted"), exist_ok=True)
+    print("Setting up output folder...")
+    os.makedirs(os.path.join(OUTPUT_DIR, "Unsorted"), exist_ok=True)
 
-with open(JSON_FILE, "r", encoding="utf-8") as f:
-    data = json.load(f)
+    with open(JSON_FILE, "r", encoding="utf-8") as f:
+        data = json.load(f)
 
-media_items = data.get("Saved Media", [])
-existing_files = build_existing_files_index(OUTPUT_DIR)
-total_items = len(media_items)
+    media_items = data.get("Saved Media", [])
+    existing_files = build_existing_files_index(OUTPUT_DIR)
+    total_items = len(media_items)
 
-print(f"Found {total_items} items. Downloading with {MAX_WORKERS} parallel workers...\n")
+    print(f"Found {total_items} items. Downloading with {MAX_WORKERS} parallel workers...\n")
 
-start_time = time.time()
+    start_time = time.time()
 
-with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-    futures = {
-        executor.submit(download_item, item, i, existing_files, OUTPUT_DIR, total_items): i
-        for i, item in enumerate(media_items, start=1)
-    }
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        futures = {
+            executor.submit(download_item, item, i, existing_files, OUTPUT_DIR, total_items): i
+            for i, item in enumerate(media_items, start=1)
+        }
 
-    for future in as_completed(futures):
-        filename, status, msg, item_data = future.result()
-        progress = get_progress_string(total_items)
-        
-        if status == "ok":
-            print(f"✓ {filename} → {msg}  {progress}")
-        elif status == "failed":
-            print(f"❌ {filename}: {msg}  {progress}")
-            if item_data:
-                item_data["error"] = msg
-                failed_items.append(item_data)
-        # skipped and no_url are silent
+        for future in as_completed(futures):
+            filename, status, msg, item_data = future.result()
+            progress = get_progress_string(total_items)
 
-elapsed = time.time() - start_time
-print(f"\n{'='*60}")
-print(f"✅ Done in {format_time(elapsed)}!")
-print(f"   Downloaded: {stats['downloaded']}")
-print(f"   Skipped:    {stats['skipped']}")
-print(f"   Failed:     {stats['failed']}")
+            if status == "ok":
+                print(f"OK {filename} -> {msg}  {progress}")
+            elif status == "failed":
+                print(f"FAILED {filename}: {msg}  {progress}")
+                if item_data:
+                    item_data["error"] = msg
+                    failed_items.append(item_data)
+            # skipped and no_url are silent
 
-# Save failed downloads for retry
-save_failed_log()
+    elapsed = time.time() - start_time
+    print(f"\n{'=' * 60}")
+    print(f"Done in {format_time(elapsed)}!")
+    print(f"   Downloaded: {stats['downloaded']}")
+    print(f"   Skipped:    {stats['skipped']}")
+    print(f"   Failed:     {stats['failed']}")
+
+    # Save failed downloads for retry
+    save_failed_log()
+
+
+if __name__ == "__main__":
+    main()
