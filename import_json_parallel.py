@@ -8,19 +8,21 @@ Notes: Use the internet connection tool first, if you have good enough internet 
         the tool will also let you know the amount of workers you should use
 
 Worker recommendations:
-    Your Speed	    Workers
-    <10 Mbps	    4
-    10–25 Mbps	    8
-    25–50 Mbps	    12
-    50–100 Mbps	    16
-    100–200 Mbps	24
-    200+ Mbps	    32 (max)
-Version: 1.0
+    Your Speed      Workers
+    <10 Mbps        4
+    10-25 Mbps      8
+    25-50 Mbps      12
+    50-100 Mbps     16
+    100-200 Mbps    24
+    200+ Mbps       32 (max)
+Version: 1.1
 License: MIT
 """
 
 import json
 import os
+import shutil
+import urllib.error
 import urllib.request
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -29,10 +31,12 @@ import time
 
 JSON_FILE = r"" #Change to where JSON file is located
 OUTPUT_DIR = r"" #Change to desired output directory
-FAILED_LOG = os.path.join(OUTPUT_DIR, "failed_downloads.txt")
 
 # Number of parallel downloads (5-10 is usually safe)
 MAX_WORKERS = 8
+
+TIMEOUT = 30   # seconds per request
+RETRIES = 3    # attempts per file
 
 # Month names for folder creation
 MONTHS = [
@@ -64,15 +68,6 @@ def parse_date(item):
     return None
 
 
-def ensure_folder_structure(base_dir):
-    """Create Snapchat Memories/Year/Month folder structure."""
-    for year in range(2016, 2026): # change to desired years
-        for month in MONTHS:
-            path = os.path.join(base_dir, str(year), month)
-            os.makedirs(path, exist_ok=True)
-    os.makedirs(os.path.join(base_dir, "Unsorted"), exist_ok=True)
-
-
 def get_target_folder(base_dir, dt):
     """Return the folder path for a given datetime, or Unsorted if None."""
     if dt is None:
@@ -89,6 +84,31 @@ def build_existing_files_index(base_dir):
         for f in files:
             existing.add(f)
     return existing
+
+
+def fetch_to_file(url, filepath, retries=RETRIES, timeout=TIMEOUT):
+    """Download url to filepath atomically (via .part) with timeout and retry."""
+    if not url.lower().startswith("https://"):
+        raise ValueError("Only https:// URLs are allowed")
+    tmp = filepath + ".part"
+    last_error = None
+    for attempt in range(1, retries + 1):
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=timeout) as resp, open(tmp, "wb") as out:
+                shutil.copyfileobj(resp, out)
+            os.replace(tmp, filepath)
+            return
+        except Exception as e:
+            last_error = e
+            if os.path.exists(tmp):
+                os.remove(tmp)
+            # Client errors (expired link etc.) will not fix themselves, except 429
+            if isinstance(e, urllib.error.HTTPError) and 400 <= e.code < 500 and e.code != 429:
+                break
+            if attempt < retries:
+                time.sleep(2 ** attempt)
+    raise last_error
 
 
 def download_item(item, index, existing_files, base_dir, total_items):
@@ -111,11 +131,12 @@ def download_item(item, index, existing_files, base_dir, total_items):
 
     dt = parse_date(item)
     folder = get_target_folder(base_dir, dt)
-    filepath = os.path.join(folder, filename)
     date_label = dt.strftime("%Y-%m") if dt else "Unsorted"
 
     try:
-        urllib.request.urlretrieve(url, filepath)
+        os.makedirs(folder, exist_ok=True)
+        filepath = os.path.join(folder, filename)
+        fetch_to_file(url, filepath)
         with lock:
             stats["downloaded"] += 1
             stats["processed"] += 1
@@ -144,16 +165,16 @@ def format_time(seconds):
 def get_progress_string(total_items):
     """Generate progress string with ETA."""
     processed = stats["processed"]
-    
+
     if start_time is None or processed == 0:
         return f"[0/{total_items}] Starting..."
-    
+
     elapsed = time.time() - start_time
-    
+
     rate = processed / elapsed  # items per second
     remaining = total_items - processed
     eta_seconds = remaining / rate if rate > 0 else 0
-    
+
     percent = (processed / total_items) * 100
     return f"[{processed}/{total_items}] {percent:.1f}% | ETA: {format_time(eta_seconds)}"
 
@@ -162,8 +183,9 @@ def save_failed_log():
     """Save failed downloads to a file for retry."""
     if not failed_items:
         return
-    
-    with open(FAILED_LOG, "w", encoding="utf-8") as f:
+
+    failed_log = os.path.join(OUTPUT_DIR, "failed_downloads.txt")
+    with open(failed_log, "w", encoding="utf-8") as f:
         f.write(f"# Failed downloads - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
         f.write(f"# Total failed: {len(failed_items)}\n\n")
         for item in failed_items:
@@ -171,52 +193,58 @@ def save_failed_log():
             f.write(f"URL: {item['url']}\n")
             f.write(f"Error: {item.get('error', 'Unknown')}\n")
             f.write("-" * 50 + "\n")
-    print(f"\n📝 Failed downloads saved to: {FAILED_LOG}")
+    print(f"\nFailed downloads saved to: {failed_log}")
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Main script
-# ─────────────────────────────────────────────────────────────────────────────
+def main():
+    global start_time
 
-print(f"Setting up folder structure...")
-ensure_folder_structure(OUTPUT_DIR)
+    if not JSON_FILE or not OUTPUT_DIR:
+        raise SystemExit("Set JSON_FILE and OUTPUT_DIR at the top of the script first.")
 
-with open(JSON_FILE, "r", encoding="utf-8") as f:
-    data = json.load(f)
+    print("Setting up output folder...")
+    os.makedirs(os.path.join(OUTPUT_DIR, "Unsorted"), exist_ok=True)
 
-media_items = data.get("Saved Media", [])
-existing_files = build_existing_files_index(OUTPUT_DIR)
-total_items = len(media_items)
+    with open(JSON_FILE, "r", encoding="utf-8") as f:
+        data = json.load(f)
 
-print(f"Found {total_items} items. Downloading with {MAX_WORKERS} parallel workers...\n")
+    media_items = data.get("Saved Media", [])
+    existing_files = build_existing_files_index(OUTPUT_DIR)
+    total_items = len(media_items)
 
-start_time = time.time()
+    print(f"Found {total_items} items. Downloading with {MAX_WORKERS} parallel workers...\n")
 
-with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-    futures = {
-        executor.submit(download_item, item, i, existing_files, OUTPUT_DIR, total_items): i
-        for i, item in enumerate(media_items, start=1)
-    }
+    start_time = time.time()
 
-    for future in as_completed(futures):
-        filename, status, msg, item_data = future.result()
-        progress = get_progress_string(total_items)
-        
-        if status == "ok":
-            print(f"✓ {filename} → {msg}  {progress}")
-        elif status == "failed":
-            print(f"❌ {filename}: {msg}  {progress}")
-            if item_data:
-                item_data["error"] = msg
-                failed_items.append(item_data)
-        # skipped and no_url are silent
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        futures = {
+            executor.submit(download_item, item, i, existing_files, OUTPUT_DIR, total_items): i
+            for i, item in enumerate(media_items, start=1)
+        }
 
-elapsed = time.time() - start_time
-print(f"\n{'='*60}")
-print(f"✅ Done in {format_time(elapsed)}!")
-print(f"   Downloaded: {stats['downloaded']}")
-print(f"   Skipped:    {stats['skipped']}")
-print(f"   Failed:     {stats['failed']}")
+        for future in as_completed(futures):
+            filename, status, msg, item_data = future.result()
+            progress = get_progress_string(total_items)
 
-# Save failed downloads for retry
-save_failed_log()
+            if status == "ok":
+                print(f"OK {filename} -> {msg}  {progress}")
+            elif status == "failed":
+                print(f"FAILED {filename}: {msg}  {progress}")
+                if item_data:
+                    item_data["error"] = msg
+                    failed_items.append(item_data)
+            # skipped and no_url are silent
+
+    elapsed = time.time() - start_time
+    print(f"\n{'=' * 60}")
+    print(f"Done in {format_time(elapsed)}!")
+    print(f"   Downloaded: {stats['downloaded']}")
+    print(f"   Skipped:    {stats['skipped']}")
+    print(f"   Failed:     {stats['failed']}")
+
+    # Save failed downloads for retry
+    save_failed_log()
+
+
+if __name__ == "__main__":
+    main()
